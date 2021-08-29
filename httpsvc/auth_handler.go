@@ -11,7 +11,6 @@ import (
 
 const accessTokenExpiry = 30 * time.Minute
 
-// Login godoc
 // @Summary login a User
 // @Description currently it only support one session per user
 // @ID Login
@@ -20,7 +19,7 @@ const accessTokenExpiry = 30 * time.Minute
 // @Param user body LoginRequest true "login request"
 // @Success 200 {object} LoginResponse
 // @Failure 400 {object} Error
-// @Router /api/v1/users/login [post]
+// @Router /api/v1/auth/login [post]
 func (s *Server) handleLogin(c echo.Context) error {
 	req := &LoginRequest{}
 	err := c.Bind(req)
@@ -76,11 +75,21 @@ func (s *Server) handleLogin(c echo.Context) error {
 	})
 }
 
-func (s *Server) handleRefreshToken(c echo.Context) error {
-	req := struct {
-		RT string `json:"refreshToken"`
-	}{}
+type RefreshTokenRequest struct {
+	RT string `json:"refreshToken"`
+}
 
+// @Summary refresh an access token
+// @Description refresh an access token
+// @ID RefreshToken
+// @Accept json
+// @Produce json
+// @Param user body RefreshTokenRequest true "refresh token request"
+// @Success 200 {object} LoginResponse
+// @Failure 400 {object} Error
+// @Router /api/v1/auth/refresh [post]
+func (s *Server) handleRefreshToken(c echo.Context) error {
+	req := RefreshTokenRequest{}
 	err := c.Bind(&req)
 	if err != nil {
 		logrus.Error(err)

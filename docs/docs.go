@@ -24,6 +24,82 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "currently it only support one session per user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "login a User",
+                "operationId": "Login",
+                "parameters": [
+                    {
+                        "description": "login request",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpsvc.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpsvc.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "description": "refresh an access token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "refresh an access token",
+                "operationId": "RefreshToken",
+                "parameters": [
+                    {
+                        "description": "refresh token request",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httpsvc.RefreshTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpsvc.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpsvc.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/submissions": {
             "post": {
                 "consumes": [
@@ -139,43 +215,6 @@ var doc = `{
                     }
                 }
             }
-        },
-        "/api/v1/users/login": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "summary": "login a User",
-                "operationId": "Login",
-                "parameters": [
-                    {
-                        "description": "login request",
-                        "name": "user",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/LoginRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpsvc.LoginResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpsvc.Error"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -212,6 +251,14 @@ var doc = `{
                     "type": "string"
                 },
                 "tokenType": {
+                    "type": "string"
+                }
+            }
+        },
+        "httpsvc.RefreshTokenRequest": {
+            "type": "object",
+            "properties": {
+                "refreshToken": {
                     "type": "string"
                 }
             }

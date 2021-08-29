@@ -24,6 +24,11 @@ definitions:
       tokenType:
         type: string
     type: object
+  httpsvc.RefreshTokenRequest:
+    properties:
+      refreshToken:
+        type: string
+    type: object
   httpsvc.SubmissionReq:
     properties:
       assignmentID:
@@ -83,6 +88,56 @@ info:
   title: Autograde API
   version: "1.0"
 paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: currently it only support one session per user
+      operationId: Login
+      parameters:
+      - description: login request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpsvc.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpsvc.Error'
+      summary: login a User
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: refresh an access token
+      operationId: RefreshToken
+      parameters:
+      - description: refresh token request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/httpsvc.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpsvc.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpsvc.Error'
+      summary: refresh an access token
   /api/v1/submissions:
     post:
       consumes:
@@ -159,28 +214,4 @@ paths:
           schema:
             $ref: '#/definitions/httpsvc.Error'
       summary: create (register) a User
-  /api/v1/users/login:
-    post:
-      consumes:
-      - application/json
-      operationId: Login
-      parameters:
-      - description: login request
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpsvc.LoginResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpsvc.Error'
-      summary: login a User
 swagger: "2.0"
