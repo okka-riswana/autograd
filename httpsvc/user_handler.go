@@ -5,21 +5,20 @@ import (
 	"time"
 
 	"github.com/fahmifan/autograd/model"
-	"github.com/fahmifan/autograd/utils"
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 )
 
 const userInfoCtx = "userInfoCtx"
 
-type userRequest struct {
-	Name     string
-	Email    string
-	Password string
-	Role     string
+type UserRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role" enums:"ADMIN,STUDENT"`
 }
 
-func (u *userRequest) toModel() *model.User {
+func (u *UserRequest) toModel() *model.User {
 	return &model.User{
 		Email:    u.Email,
 		Password: u.Password,
@@ -28,7 +27,7 @@ func (u *userRequest) toModel() *model.User {
 	}
 }
 
-type userRes struct {
+type UserRes struct {
 	ID        string `json:"id"`
 	Email     string `json:"email"`
 	Role      string `json:"role"`
@@ -36,9 +35,9 @@ type userRes struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-func userResFromModel(m *model.User) *userRes {
-	return &userRes{
-		ID:        utils.Int64ToString(m.ID),
+func userResFromModel(m *model.User) *UserRes {
+	return &UserRes{
+		ID:        m.ID,
 		Email:     m.Email,
 		Role:      m.Role.ToString(),
 		CreatedAt: m.CreatedAt.Format(time.RFC3339Nano),
@@ -46,17 +45,22 @@ func userResFromModel(m *model.User) *userRes {
 	}
 }
 
-func responseError(c echo.Context, err error) error {
-	switch err {
-	case nil:
-		return c.JSON(http.StatusOK, nil)
-	default:
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
+type Error struct {
+	Error string `json:"error"`
 }
 
+// CreateUser godoc
+// @Summary create (register) a User
+// @Description create a User
+// @ID CreateUser
+// @Accept  json
+// @Produce  json
+// @Param user body UserRequest true "name"
+// @Success 200 {object} UserRes
+// @Failure default {object} Error
+// @Router /api/v1/users [post]
 func (s *Server) handleCreateUser(c echo.Context) error {
-	userReq := &userRequest{}
+	userReq := &UserRequest{}
 	err := c.Bind(userReq)
 	if err != nil {
 		logrus.Error(err)
@@ -73,25 +77,14 @@ func (s *Server) handleCreateUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, userResFromModel(user))
 }
 
-func (s *Server) handleLogin(c echo.Context) error {
-	userReq := &userRequest{}
-	err := c.Bind(userReq)
-	if err != nil {
-		logrus.Error(err)
-		return responseError(c, err)
-	}
+type LoginRequest struct {
+	Email    string `json:"email" example:"your@email.com"`
+	Password string `json:"password"`
+} //@name LoginRequest
 
-	user, err := s.userUsecase.FindByEmailAndPassword(c.Request().Context(), userReq.Email, userReq.Password)
-	if err != nil {
-		logrus.Error(err)
-		return responseError(c, err)
-	}
-
-	token, err := generateToken(*user, createTokenExpiry())
-	if err != nil {
-		logrus.WithField("email", userReq.Email).Error(err)
-		return err
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"token": token})
+type LoginResponse struct {
+	AccessToken  string `json:"accessToken"`
+	TokenType    string `json:"tokenType"`
+	ExpiredIn    int32  `json:"expiredIn"`
+	RefreshToken string `json:"refreshToken"`
 }

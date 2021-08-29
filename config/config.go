@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fahmifan/autograd/utils"
 	"github.com/gomodule/redigo/redis"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
@@ -17,6 +18,9 @@ func init() {
 	}
 
 	logrus.SetReportCaller(true)
+	if Env() == EnvDevelopment {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 	logrus.Info("load .env file to os env")
 }
 
@@ -25,26 +29,29 @@ func Port() string {
 	return os.Getenv("PORT")
 }
 
+const EnvDevelopment = "development"
+const EnvProduction = "production"
+
 // Env ..
 func Env() string {
 	if val, ok := os.LookupEnv("ENV"); ok {
 		return val
 	}
 
-	return "development"
+	return EnvDevelopment
 }
 
 // JWTSecret ..
 func JWTSecret() string {
 	val, ok := os.LookupEnv("JWT_SECRET")
 	if !ok {
-		logrus.Fatal("JWT_SECRET not provided")
+		logrus.Error("JWT_SECRET not provided")
 	}
 	return val
 }
 
-// BaseURL ..
-func BaseURL() string {
+// APIBaseURL ..
+func APIBaseURL() string {
 	if val, ok := os.LookupEnv("BASE_URL"); ok {
 		return val
 	}
@@ -106,4 +113,9 @@ func FileUploadPath() string {
 	}
 
 	return "file_upload_path"
+}
+
+// WebPort ..
+func WebPort() int {
+	return utils.StringToInt(os.Getenv("WEB_PORT"))
 }

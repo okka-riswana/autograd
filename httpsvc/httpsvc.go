@@ -5,10 +5,12 @@ import (
 	"net/http"
 
 	"github.com/fahmifan/autograd/model"
-	"github.com/fahmifan/autograd/usecase"
 
+	_ "github.com/fahmifan/autograd/docs"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/sirupsen/logrus"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 // Server ..
@@ -16,10 +18,11 @@ type Server struct {
 	echo              *echo.Echo
 	port              string
 	staticMediaPath   string
-	userUsecase       usecase.UserUsecase
-	assignmentUsecase usecase.AssignmentUsecase
-	submissionUsecase usecase.SubmissionUsecase
-	mediaUsecase      model.MediaUsecase
+	userUsecase       model.UserUsecase
+	assignmentUsecase model.AssignmentUsecase
+	submissionUsecase model.SubmissionUsecase
+	objectStorer      model.ObjectStorer
+	sessionRepo       model.SessionRespository
 }
 
 // NewServer ..
@@ -40,44 +43,48 @@ func NewServer(port, staticMediaPath string, opts ...Option) *Server {
 // Run server
 func (s *Server) Run() {
 	s.routes()
-	logrus.Fatal(s.echo.Start(":" + s.port))
+	err := s.echo.Start(":" + s.port)
+	if err != nil && err != http.ErrServerClosed {
+		logrus.Error(err)
+		return
+	}
+	logrus.Info("api server stopped gracefully")
 }
 
 // Stop server gracefully
 func (s *Server) Stop(ctx context.Context) {
 	if err := s.echo.Shutdown(ctx); err != nil {
-		logrus.Fatal(err)
+		logrus.Error(err)
 	}
 }
 
 func (s *Server) routes() {
-	s.echo.GET("/ping", s.handlePing)
+	s.echo.Use(middleware.CORSWithConfig(middleware.DefaultCORSConfig))
 
-	// TODO: add auth for private static
-	s.echo.Static("/storage", "submission")
-	s.echo.Static("/media", s.staticMediaPath)
+	s.echo.GET("/ping", s.handlePing)
+	s.echo.GET("/docs/swagger/*", echoSwagger.WrapHandler)
 
 	apiV1 := s.echo.Group("/api/v1")
+
+	apiV1.POST("/auth/login", s.handleLogin)
+	apiV1.POST("/auth/refresh", s.handleRefreshToken)
+
 	apiV1.POST("/users", s.handleCreateUser)
-	apiV1.POST("/users/login", s.handleLogin)
 
-	// example using auth middleware
-	authorizeAdminStudent := []model.Role{model.RoleAdmin, model.RoleStudent}
-	apiV1.GET("/example-private-data", s.handlePing, AuthMiddleware, s.authorizeByRoleMiddleware(authorizeAdminStudent))
+	apiV1.POST("/assignments", s.handleCreateAssignment, s.authorizedAny(model.CreateAssignment))
+	apiV1.GET("/assignments", s.handleGetAllAssignments, s.authorizedAny(model.ViewAnyAssignments, model.ViewAssignment))
+	apiV1.GET("/assignments/:id", s.handleGetAssignment, s.authorizedAny(model.ViewAssignment, model.ViewAnyAssignments))
+	apiV1.GET("/assignments/:id/submissions", s.handleGetAssignmentSubmissions, s.authorizedAny(model.ViewAnySubmissions, model.ViewSubmission))
+	apiV1.PUT("/assignments/:id", s.handleUpdateAssignment, s.authorizedAny(model.UpdateAssignment))
+	apiV1.DELETE("/assignments/:id", s.handleDeleteAssignment, s.authorizedAny(model.DeleteAssignment))
 
-	apiV1.POST("/assignments", s.handleCreateAssignment)
-	apiV1.GET("/assignments", s.handleGetAssignments)
-	apiV1.GET("/assignments/:ID", s.handleGetAssignment)
-	apiV1.GET("/assignments/:ID/submissions", s.handleGetAssignmentSubmissions)
-	apiV1.PUT("/assignments", s.handleUpdateAssignment)
-	apiV1.DELETE("/assignments/:ID", s.handleDeleteAssignment)
+	apiV1.POST("/submissions", s.handleCreateSubmission, s.authorizedAny(model.CreateSubmission))
+	apiV1.GET("/submissions/:id", s.handleGetSubmission, s.authorizedAny(model.ViewSubmission, model.ViewAnySubmissions))
+	apiV1.PUT("/submissions", s.handleUpdateSubmission, s.authorizedAny(model.UpdateSubmission))
+	apiV1.DELETE("/submissions/:id", s.handleDeleteSubmission, s.authorizedAny(model.DeleteSubmission))
 
-	apiV1.POST("/submissions", s.handleCreateSubmission)
-	apiV1.GET("/submissions/:ID", s.handleGetSubmission)
-	apiV1.PUT("/submissions", s.handleUpdateSubmission)
-	apiV1.DELETE("/submissions/:ID", s.handleDeleteSubmission)
-
-	apiV1.POST("/media/upload", s.handleUploadMedia)
+	apiV1.POST("/media", s.handleUploadMedia, s.authorizedAny(model.CreateMedia))
+	apiV1.GET("/media/:filename", s.handleGetMedia)
 }
 
 func (s *Server) handlePing(c echo.Context) error {

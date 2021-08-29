@@ -8,8 +8,6 @@ import (
 )
 
 type assignmentReq struct {
-	ID                string `json:"id,omitempty"`
-	AssignedBy        string `json:"assignedBy"`
 	Name              string `json:"name"`
 	Description       string `json:"description"`
 	CaseInputFileURL  string `json:"caseInputFileURL"`
@@ -18,7 +16,6 @@ type assignmentReq struct {
 
 func assignmentCreateReqToModel(r *assignmentReq) *model.Assignment {
 	return &model.Assignment{
-		AssignedBy:        utils.StringToInt64(r.AssignedBy),
 		Name:              r.Name,
 		Description:       r.Description,
 		CaseInputFileURL:  r.CaseInputFileURL,
@@ -28,8 +25,6 @@ func assignmentCreateReqToModel(r *assignmentReq) *model.Assignment {
 
 func assigmentUpdateReqToModel(r *assignmentReq) *model.Assignment {
 	return &model.Assignment{
-		ID:                utils.StringToInt64(r.ID),
-		AssignedBy:        utils.StringToInt64(r.AssignedBy),
 		Name:              r.Name,
 		Description:       r.Description,
 		CaseInputFileURL:  r.CaseInputFileURL,
@@ -42,8 +37,8 @@ type assignmentRes struct {
 	AssignedBy        string `json:"assignedBy"`
 	Name              string `json:"name"`
 	Description       string `json:"description"`
-	CaseInputFileURL  string `json:"caseInputFileURL"`
-	CaseOutputFileURL string `json:"caseOutputFileURL"`
+	CaseInputFileURL  string `json:"caseInputFileURL,omitempty"`
+	CaseOutputFileURL string `json:"caseOutputFileURL,omitempty"`
 	CreatedAt         string `json:"createdAt"`
 	UpdatedAt         string `json:"updatedAt"`
 	DeletedAt         string `json:"deletedAt,omitempty"`
@@ -51,8 +46,8 @@ type assignmentRes struct {
 
 func assignmentModelToRes(m *model.Assignment) *assignmentRes {
 	return &assignmentRes{
-		ID:                utils.Int64ToString(m.ID),
-		AssignedBy:        utils.Int64ToString(m.AssignedBy),
+		ID:                m.ID,
+		AssignedBy:        m.AssignedBy,
 		Name:              m.Name,
 		Description:       m.Description,
 		CaseInputFileURL:  m.CaseInputFileURL,
@@ -72,8 +67,8 @@ func newAssignmentResponses(assignments []*model.Assignment) (assignmentRes []*a
 
 func assignmentModelToDeleteRes(m *model.Assignment) *assignmentRes {
 	return &assignmentRes{
-		ID:                utils.Int64ToString(m.ID),
-		AssignedBy:        utils.Int64ToString(m.AssignedBy),
+		ID:                m.ID,
+		AssignedBy:        m.AssignedBy,
 		Name:              m.Name,
 		Description:       m.Description,
 		CaseInputFileURL:  m.CaseInputFileURL,
@@ -104,39 +99,35 @@ func newCursorRes(c model.Cursor, data interface{}, count int64) *cursorRes {
 	}
 }
 
-type uploadReq struct {
-	SourceCode string `json:"sourceCode"`
-}
-
-type uploadRes struct {
-	FileURL string `json:"fileURL"`
-}
-
-type submissionReq struct {
-	ID           string `json:"id,omitempty"`
-	AssignmentID int64  `json:"assignmentID"`
-	SubmittedBy  int64  `json:"submittedBy"`
+type SubmissionReq struct {
+	AssignmentID string `json:"assignmentID"`
 	FileURL      string `json:"fileURL"`
 }
 
-func submissionCreateReqToModel(s *submissionReq) *model.Submission {
+func submissionCreateReqToModel(s *SubmissionReq) *model.Submission {
 	return &model.Submission{
+		AssignmentID: s.AssignmentID,
+		FileURL:      s.FileURL,
+	}
+}
+
+type SubmissionUpdate struct {
+	ID           string `json:"id"`
+	AssignmentID string `json:"assignmentID"`
+	SubmittedBy  string `json:"submittedBy"`
+	FileURL      string `json:"fileURL"`
+}
+
+func submissionUpdateReqToModel(s *SubmissionUpdate) *model.Submission {
+	return &model.Submission{
+		Base:         model.Base{ID: s.ID},
 		AssignmentID: s.AssignmentID,
 		SubmittedBy:  s.SubmittedBy,
 		FileURL:      s.FileURL,
 	}
 }
 
-func submissionUpdateReqToModel(s *submissionReq) *model.Submission {
-	return &model.Submission{
-		ID:           utils.StringToInt64(s.ID),
-		AssignmentID: s.AssignmentID,
-		SubmittedBy:  s.SubmittedBy,
-		FileURL:      s.FileURL,
-	}
-}
-
-type submissionRes struct {
+type SubmissionRes struct {
 	ID           string `json:"id"`
 	AssignmentID string `json:"assignmentID"`
 	SubmittedBy  string `json:"submittedBy"`
@@ -147,11 +138,11 @@ type submissionRes struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
-func submissionModelToRes(m *model.Submission) *submissionRes {
-	return &submissionRes{
-		ID:           utils.Int64ToString(m.ID),
-		AssignmentID: utils.Int64ToString(m.AssignmentID),
-		SubmittedBy:  utils.Int64ToString(m.SubmittedBy),
+func submissionModelToRes(m *model.Submission) *SubmissionRes {
+	return &SubmissionRes{
+		ID:           m.ID,
+		AssignmentID: m.AssignmentID,
+		SubmittedBy:  m.SubmittedBy,
 		FileURL:      m.FileURL,
 		Grade:        m.Grade,
 		Feedback:     m.Feedback,
@@ -160,7 +151,7 @@ func submissionModelToRes(m *model.Submission) *submissionRes {
 	}
 }
 
-func newSubmissionResponses(submissions []*model.Submission) (submissionRes []*submissionRes) {
+func newSubmissionResponses(submissions []*model.Submission) (submissionRes []*SubmissionRes) {
 	for _, submission := range submissions {
 		submissionRes = append(submissionRes, submissionModelToRes(submission))
 	}

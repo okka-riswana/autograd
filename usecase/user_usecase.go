@@ -11,24 +11,18 @@ import (
 )
 
 // UserUsecase ..
-type UserUsecase interface {
-	Create(ctx context.Context, user *model.User) error
-	FindByID(ctx context.Context, id int64) (user *model.User, err error)
-	FindByEmailAndPassword(ctx context.Context, email, password string) (*model.User, error)
-}
-
-type userUsecase struct {
+type UserUsecase struct {
 	userRepo repository.UserRepository
 }
 
 // NewUserUsecase ..
-func NewUserUsecase(userRepo repository.UserRepository) UserUsecase {
-	return &userUsecase{
+func NewUserUsecase(userRepo repository.UserRepository) *UserUsecase {
+	return &UserUsecase{
 		userRepo: userRepo,
 	}
 }
 
-func (u *userUsecase) Create(ctx context.Context, user *model.User) error {
+func (u *UserUsecase) Create(ctx context.Context, user *model.User) error {
 	if user == nil {
 		return ErrInvalidArguments
 	}
@@ -48,7 +42,6 @@ func (u *userUsecase) Create(ctx context.Context, user *model.User) error {
 		return errors.New("user already exists")
 	}
 
-	user.ID = utils.GenerateID()
 	user.Password, err = utils.HashPassword(user.Password)
 	if err != nil {
 		logrus.Error(err)
@@ -63,7 +56,7 @@ func (u *userUsecase) Create(ctx context.Context, user *model.User) error {
 	return err
 }
 
-func (u *userUsecase) FindByID(ctx context.Context, id int64) (user *model.User, err error) {
+func (u *UserUsecase) FindByID(ctx context.Context, id string) (user *model.User, err error) {
 	user, err = u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -80,7 +73,7 @@ func (u *userUsecase) FindByID(ctx context.Context, id int64) (user *model.User,
 	return
 }
 
-func (u *userUsecase) FindByEmailAndPassword(ctx context.Context, email, plainPassword string) (user *model.User, err error) {
+func (u *UserUsecase) FindByEmailAndPassword(ctx context.Context, email, plainPassword string) (user *model.User, err error) {
 	user, err = u.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{

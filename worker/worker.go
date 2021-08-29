@@ -1,79 +1,87 @@
 package worker
 
 import (
-	"errors"
+	"context"
+	"sync"
+	"time"
 
-	"github.com/fahmifan/autograd/config"
 	"github.com/fahmifan/autograd/model"
-	"github.com/gocraft/work"
-	"github.com/gomodule/redigo/redis"
+	"github.com/sirupsen/logrus"
 )
-
-var defaultJobOpt = work.JobOptions{MaxConcurrency: 3, MaxFails: 3}
-
-// The real one
-const cronEvery10Minute = "0 10 * * *"
 
 // Worker ..
 type Worker struct {
-	pool       *work.WorkerPool
-	redisPool  *redis.Pool
-	enqueuer   *work.Enqueuer
-	grader     model.GraderUsecase
-	submission model.SubmissionUsecase
-	assignment model.AssignmentUsecase
+	*Config
 }
 
-// NewWorker ..
-func NewWorker(redisPool *redis.Pool, opts ...Option) *Worker {
-	wrk := &Worker{
-		redisPool: redisPool,
-	}
-	for _, opt := range opts {
-		opt(wrk)
-	}
-	wrk.enqueuer = newEnqueuer(wrk.redisPool)
-
-	return wrk
+type Config struct {
+	_                 string // enforce
+	Broker            model.Broker
+	GraderUsecase     model.GraderUsecase
+	SubmissionUsecase model.SubmissionUsecase
+	AssignmentUsecase model.AssignmentUsecase
 }
 
-// Start starts worker
-func (w *Worker) Start() {
-	w.registerJobs()
-	w.pool.Start()
+func New(cfg *Config) *Worker {
+	return &Worker{cfg}
 }
 
-// Stop stops worker
-func (w *Worker) Stop() {
-	w.pool.Stop()
-}
-
-func (w *Worker) registerJobs() {
-	conc := config.WorkerConcurrency()
-	nameSpace := config.WorkerNamespace()
-
-	w.pool = work.NewWorkerPool(jobHandler{}, conc, nameSpace, w.redisPool)
-	w.pool.Middleware(w.registerJobConfig)
-
-	w.pool.JobWithOptions(jobGradeSubmission, defaultJobOpt, (*jobHandler).handleGradeSubmission)
-
-	// TODO: disable for now
-	// w.pool.JobWithOptions(jobGradeAssignment, defaultJobOpt, (*jobHandler).handleGradeAssignment)
-	// w.pool.JobWithOptions(jobCheckAllDueAssignments, defaultJobOpt, (*jobHandler).handleCheckAllDueAssignments)
-	// w.pool.PeriodicallyEnqueue(cronEvery10Minute, jobCheckAllDueAssignments)
-}
-
-func (w *Worker) registerJobConfig(handler *jobHandler, job *work.Job, next work.NextMiddlewareFunc) error {
-	if handler == nil {
-		return errors.New("unexpected nil handler")
+// GradeSubmission ..
+func (w *Worker) GradeSubmission(submissionID string) error {
+	err := w.GraderUsecase.GradeBySubmission(submissionID)
+	if err != nil {
+		logrus.WithField("submissionID", submissionID).Error(err)
 	}
 
-	handler.pool = w.pool
-	handler.redisPool = w.redisPool
-	handler.enqueuer = w.enqueuer
-	handler.grader = w.grader
-	handler.submission = w.submission
-	handler.assignment = w.assignment
+	return err
+}
 
-	return next()
+// GradeAssignment ..
+func (w *Worker) GradeAssignment(assignmentID string) error {
+	const maxBuf = 10
+	submsChan := make(chan []*model.Submission, maxBuf)
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go w.gradeSubmissions(wg, submsChan)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
+	defer cancel()
+
+	var page int64 = 1
+	const size int64 = 10
+	for {
+		sorter := model.NewSorter(model.SortCreatedAtAsc.String())
+		cursor := model.NewCursor(size, page, sorter)
+		subms, _, err := w.SubmissionUsecase.FindAllByAssignmentID(ctx, cursor, assignmentID)
+		if err != nil {
+			logrus.WithField("assignmentID", assignmentID).Error(err)
+			return err
+		}
+		if len(subms) == 0 {
+			break
+		}
+
+		submsChan <- subms
+		page++
+	}
+	close(submsChan)
+	wg.Wait()
+
+	return nil
+}
+
+func (w *Worker) gradeSubmissions(wg *sync.WaitGroup, submsChan chan []*model.Submission) {
+	defer wg.Done()
+	for subms := range submsChan {
+		for _, subm := range subms {
+			if subm == nil {
+				continue
+			}
+			err := w.Broker.GradeSubmission(subm.ID)
+			if err != nil {
+				logrus.WithField("submissionID", subm).Error(err)
+			}
+		}
+	}
 }

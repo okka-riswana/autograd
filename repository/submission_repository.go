@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -14,11 +15,13 @@ import (
 // SubmissionRepository ..
 type SubmissionRepository interface {
 	Create(ctx context.Context, submission *model.Submission) error
-	DeleteByID(ctx context.Context, id int64) error
-	FindAllByAssignmentID(ctx context.Context, cursor model.Cursor, assignmentID int64) ([]*model.Submission, int64, error)
-	FindByID(ctx context.Context, id int64) (*model.Submission, error)
+	DeleteByID(ctx context.Context, id string) error
+	FindAllByAssignmentID(ctx context.Context, cursor model.Cursor, assignmentID string) ([]*model.Submission, int64, error)
+	FindByAssignmentIDAndSubmitterID(ctx context.Context, assignmentID, submitterID string) ([]*model.Submission, error)
+	FindByIDAndSubmitter(ctx context.Context, id, submitterID string) (*model.Submission, error)
+	FindByID(ctx context.Context, id string) (*model.Submission, error)
 	Update(ctx context.Context, submission *model.Submission) error
-	UpdateGradeByID(ctx context.Context, id, grade int64) error
+	UpdateGradeByID(ctx context.Context, id string, grade int64) error
 }
 
 type submissionRepo struct {
@@ -45,7 +48,7 @@ func (s *submissionRepo) Create(ctx context.Context, submission *model.Submissio
 	return nil
 }
 
-func (s *submissionRepo) DeleteByID(ctx context.Context, id int64) error {
+func (s *submissionRepo) DeleteByID(ctx context.Context, id string) error {
 	err := s.db.Where("id = ?", id).Delete(&model.Submission{}).Error
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -58,9 +61,12 @@ func (s *submissionRepo) DeleteByID(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *submissionRepo) FindAllByAssignmentID(ctx context.Context, cursor model.Cursor, assignmentID int64) ([]*model.Submission, int64, error) {
+func (s *submissionRepo) FindAllByAssignmentID(ctx context.Context, cursor model.Cursor, assignmentID string) ([]*model.Submission, int64, error) {
 	count := int64(0)
 	err := s.db.Model(model.Submission{}).Where("assignment_id = ?", assignmentID).Count(&count).Error
+	if err != nil {
+		return nil, 0, err
+	}
 	if count == 0 {
 		return nil, 0, nil
 	}
@@ -80,7 +86,7 @@ func (s *submissionRepo) FindAllByAssignmentID(ctx context.Context, cursor model
 	return submissions, count, nil
 }
 
-func (s *submissionRepo) FindByID(ctx context.Context, id int64) (*model.Submission, error) {
+func (s *submissionRepo) FindByID(ctx context.Context, id string) (*model.Submission, error) {
 	submission := &model.Submission{}
 	err := s.db.Where("id = ?", id).Take(submission).Error
 	switch err {
@@ -111,7 +117,7 @@ func (s *submissionRepo) Update(ctx context.Context, submission *model.Submissio
 }
 
 // UpdateGradeByID ..
-func (s *submissionRepo) UpdateGradeByID(ctx context.Context, id, grade int64) error {
+func (s *submissionRepo) UpdateGradeByID(ctx context.Context, id string, grade int64) error {
 	err := s.db.
 		Model(model.Submission{}).
 		Where("id = ?", id).
@@ -125,4 +131,36 @@ func (s *submissionRepo) UpdateGradeByID(ctx context.Context, id, grade int64) e
 	}
 
 	return nil
+}
+
+// FindByIDAndUserID ..
+func (s *submissionRepo) FindByIDAndSubmitter(ctx context.Context, id, userID string) (*model.Submission, error) {
+	subm := &model.Submission{}
+	err := s.db.Where("id = ? AND submitted_by = ?", id, userID).
+		Take(&subm).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	return subm, nil
+}
+
+// FindByAssignmentIDAndSubmitterID ..
+func (s *submissionRepo) FindByAssignmentIDAndSubmitterID(ctx context.Context, assignmentID, submitterID string) ([]*model.Submission, error) {
+	subm := &model.Submission{}
+	err := s.db.Where("assignment_id = ? AND submitted_by = ?", assignmentID, submitterID).
+		Take(&subm).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	return []*model.Submission{subm}, nil
 }

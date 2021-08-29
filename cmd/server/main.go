@@ -9,6 +9,7 @@ import (
 	"github.com/fahmifan/autograd/config"
 	db "github.com/fahmifan/autograd/db/migrations"
 	"github.com/fahmifan/autograd/fs"
+	"github.com/fahmifan/autograd/gocrafts"
 	"github.com/fahmifan/autograd/httpsvc"
 	"github.com/fahmifan/autograd/repository"
 	"github.com/fahmifan/autograd/usecase"
@@ -40,58 +41,74 @@ func init() {
 	initLogger()
 }
 
+// @title Autograde API
+// @version 1.0
+// @description API documentation for Autograde
+
+// @BasePath /
 func main() {
 	redisPool := config.NewRedisPool(config.RedisWorkerHost())
-	postgres := db.NewPostgres()
-	broker := worker.NewBroker(redisPool)
-	localStorage := fs.NewLocalStorage()
+	postgres := db.MustPostgres()
+	workerNamespace := config.WorkerNamespace()
+	broker := gocrafts.NewBroker(workerNamespace, redisPool)
+	localStorer := fs.NewLocalStorer(&fs.Config{
+		RootDir: config.FileUploadPath(),
+	})
 
 	userRepo := repository.NewUserRepository(postgres)
 	userUsecase := usecase.NewUserUsecase(userRepo)
 	submissionRepo := repository.NewSubmissionRepo(postgres)
 	assignmentRepo := repository.NewAssignmentRepository(postgres)
+	sessionRepo := repository.NewSessionRepository(postgres)
 
 	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepo, submissionRepo)
 	submissionUsecase := usecase.NewSubmissionUsecase(submissionRepo, usecase.SubmissionUsecaseWithBroker(broker))
-	mediaUsecase := usecase.NewMediaUsecase(config.FileUploadPath(), localStorage)
 	graderUsecase := usecase.NewGraderUsecase(submissionUsecase, assignmentUsecase)
 
-	server := httpsvc.NewServer(
+	apiServer := httpsvc.NewServer(
 		config.Port(),
 		config.FileUploadPath(),
 		httpsvc.WithUserUsecase(userUsecase),
 		httpsvc.WithAssignmentUsecase(assignmentUsecase),
 		httpsvc.WithSubmissionUsecase(submissionUsecase),
-		httpsvc.WithMediaUsecase(mediaUsecase),
+		httpsvc.WithObjectStorer(localStorer),
+		httpsvc.WithSessionRepository(sessionRepo),
 	)
-
-	wrk := worker.NewWorker(redisPool, worker.WithGrader(graderUsecase))
-
-	go func() {
-		logrus.Info("run server")
-		server.Run()
-	}()
+	workers := worker.New(&worker.Config{
+		Broker:            broker,
+		GraderUsecase:     graderUsecase,
+		SubmissionUsecase: submissionUsecase,
+		AssignmentUsecase: assignmentUsecase,
+	})
+	workerManager := gocrafts.NewWorkerManager(workerNamespace, config.WorkerConcurrency(), redisPool, workers)
 
 	go func() {
 		logrus.Info("run worker")
-		wrk.Start()
+		workerManager.Start()
 	}()
 
-	// Wait for a signal to quit:
+	go func() {
+		logrus.Info("run api server")
+		apiServer.Run()
+	}()
+
+	// gracefull shutdown
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, os.Kill)
+	signal.Notify(signalChan, os.Interrupt)
 	<-signalChan
 
-	logrus.Info("stopping server")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
-	server.Stop(ctx)
 
+	logrus.Info("stopping api server")
+	apiServer.Stop(ctx)
+
+	// if worker unable to stop after 1 minute, kill it
 	logrus.Info("stopping worker")
-	time.AfterFunc(time.Second*30, func() {
+	time.AfterFunc(1*time.Minute, func() {
+		logrus.Error("unable to stop worker gracefully")
 		os.Exit(1)
 	})
-	wrk.Stop()
+	workerManager.Stop()
 	logrus.Info("worker stopped")
-
 }

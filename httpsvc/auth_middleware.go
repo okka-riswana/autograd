@@ -16,18 +16,27 @@ var ErrUnauthorized = errors.New("unauthorized")
 // ErrMissingAuthorization error
 var ErrMissingAuthorization = errors.New("missing Authorization header")
 
-// authorizeByRoleMiddleware authorized request by given authorized roles
-func (s *Server) authorizeByRoleMiddleware(authorizedRole []model.Role) func(next echo.HandlerFunc) echo.HandlerFunc {
+func (s *Server) authorizedAny(perms ...model.Permission) func(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			user := getUserFromCtx(c)
+			token, err := parseTokenFromHeader(&c.Request().Header)
+			if err != nil {
+				log.Error(err)
+				return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid token"})
+			}
+
+			user, ok := auth(token)
+			if !ok {
+				return responseError(c, ErrUnauthorized)
+			}
+
+			setUserToCtx(c, user)
 			if user == nil {
 				log.Warn("user nil")
 				return responseError(c, ErrUnauthorized)
 			}
 
-			if ok := authorizeByRole(user.Role, authorizedRole); !ok {
-				log.WithField("role", user.Role).Warn("unauthorized role")
+			if !user.Role.GrantedAny(perms...) {
 				return responseError(c, ErrUnauthorized)
 			}
 
@@ -36,40 +45,14 @@ func (s *Server) authorizeByRoleMiddleware(authorizedRole []model.Role) func(nex
 	}
 }
 
-func authorizeByRole(userRole model.Role, authorizedRole []model.Role) bool {
-	for _, role := range authorizedRole {
-		if userRole == role {
-			return true
-		}
-	}
-
-	return false
-}
-
-// AuthMiddleware ..
-func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		token, err := parseTokenFromHeader(&c.Request().Header)
-		if err != nil {
-			log.Error(err)
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-		}
-
-		user, ok := auth(token)
-		if !ok {
-			log.Error(ErrUnauthorized)
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": ErrUnauthorized.Error()})
-		}
-
-		setUserToCtx(c, user)
-		return next(c)
-	}
-}
-
 func parseTokenFromHeader(header *http.Header) (string, error) {
 	var token string
 
 	authHeaders := strings.Split(header.Get("Authorization"), " ")
+	if len(authHeaders) != 2 {
+		return "", ErrTokenInvalid
+	}
+
 	if authHeaders[0] != "Bearer" {
 		err := ErrMissingAuthorization
 		log.WithField("Authorization", header.Get("Authorization")).Error(err)

@@ -6,11 +6,10 @@ import (
 
 	"github.com/fahmifan/autograd/utils"
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/fahmifan/autograd/config"
 	"github.com/fahmifan/autograd/model"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 // Create the JWT key used to create the signature
@@ -40,21 +39,15 @@ func (c Claims) GetRoleModel() model.Role {
 	}
 }
 
-func createTokenExpiry() int64 {
-	expireTime := time.Now().Add(8 * time.Hour)
-	tokenExpiry := expireTime.UnixNano() / 1000000
-	return tokenExpiry
-}
-
-func generateToken(user model.User, expiry int64) (string, error) {
+func generateAccessToken(user *model.User, expiredAt time.Time) (string, error) {
 	claims := &Claims{
-		ID:    utils.Int64ToString(user.ID),
+		ID:    user.ID,
 		Email: user.Email,
 		Role:  user.Role.ToString(),
 		Name:  user.Name,
 		StandardClaims: jwt.StandardClaims{
-			// millisecond
-			ExpiresAt: expiry,
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: expiredAt.Unix(),
 		},
 	}
 
@@ -67,23 +60,52 @@ func generateToken(user model.User, expiry int64) (string, error) {
 	return tokenString, nil
 }
 
-func parseJWTToken(token string) (Claims, error) {
-	claims := &Claims{}
-	tkn, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+func generateRefreshToken(sess *model.Session) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": sess.ID,
+		"exp": sess.ExpiredAt.Unix(),
+	})
+	rt, err := token.SignedString(jwtKey)
+	if err != nil {
+		return "", err
+	}
+
+	return rt, nil
+}
+
+func parseRefreshToken(token string) (sessID string, err error) {
+	claims := jwt.MapClaims{}
+	tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
 		return jwtKey, nil
 	})
-
 	if err != nil {
-		if err == jwt.ErrSignatureInvalid {
-			return *claims, err
-		}
+		return "", err
 	}
 
 	if tkn != nil && !tkn.Valid {
-		return *claims, ErrTokenInvalid
+		return "", ErrTokenInvalid
 	}
 
-	return *claims, nil
+	sessID, ok := claims["sub"].(string)
+	if !ok {
+		return "", ErrTokenInvalid
+	}
+	return sessID, nil
+}
+
+func parseJWTToken(token string) (claims Claims, err error) {
+	tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if err != nil {
+		return claims, err
+	}
+
+	if tkn != nil && !tkn.Valid {
+		return claims, ErrTokenInvalid
+	}
+
+	return claims, nil
 }
 
 func auth(token string) (*model.User, bool) {
@@ -93,7 +115,7 @@ func auth(token string) (*model.User, bool) {
 	}
 
 	user := &model.User{
-		ID:    utils.StringToInt64(claims.ID),
+		Base:  model.Base{ID: claims.ID},
 		Email: claims.Email,
 		Role:  claims.GetRoleModel(),
 	}
@@ -107,12 +129,10 @@ func getUserFromCtx(c echo.Context) *model.User {
 		return &val
 	}
 
-	logrus.WithField("res", res).Warn("invalid userInfoCtx")
 	return nil
 }
 
 func setUserToCtx(c echo.Context, user *model.User) {
-	logrus.WithField("user", user).Warn("setUserToCtx")
 	c.Set(userInfoCtx, *user)
 }
 
