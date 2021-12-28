@@ -162,17 +162,31 @@ func main() {
 		fmt.Printf("%s:\n---\n", testCode)
 		for _, src := range source {
 			fmt.Printf("%s:\n", src.UserID)
-			result, err := grad.Grade(&model.GradingArg{
-				SourceCodePath: src.Path,
-				Expecteds:      expecteds,
-				Inputs:         inputs,
-			})
+			result, err := grad.Grade(
+				&model.GradingArg{
+					SourceCodePath: src.Path,
+					Expecteds:      expecteds,
+					Inputs:         inputs,
+				},
+			)
 			if err != nil {
 				logrus.Error(err)
 				return
 			}
 
-			fmt.Printf("outputs: %v | corrects: %v | score: %d\n\n", result.Outputs, result.Corrects, result.Score())
+			fmt.Printf(
+				"outputs: %v | corrects: %v | score: %d\n\n",
+				result.Outputs,
+				result.Corrects,
+				result.Score(),
+			)
+		}
+	}
+
+	if c, ok := grad.(*grader.CPPContainerizedGrader); ok {
+		err := c.Container.Prune()
+		if err != nil {
+			logrus.WithError(err).Error("failed to prune container")
 		}
 	}
 }
